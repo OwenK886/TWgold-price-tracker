@@ -11,11 +11,26 @@ def get_gold_price():
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
+
+        # 1. 抓取掛牌時間 (精準定位法)
+        official_time = None
         
-        # 1. 抓取掛牌時間
-        # 台銀網頁上會有一個「牌價最後更新時間：2026/01/10 12:00」
+        # 嘗試方法 A: 從特定的 time 標籤抓取 (通常格式為 2026/01/10 12:00)
         time_element = soup.find("span", {"class": "time"})
-        official_time = time_element.text.strip() if time_element else datetime.now().strftime("%Y/%m/%d %H:%M")
+        if time_element:
+            official_time = time_element.get_text().strip()
+            # 去除可能存在的「牌價最後更新時間：」字樣
+            official_time = official_time.replace("牌價最後更新時間：", "").strip()
+
+        # 嘗試方法 B: 如果 A 失敗，從表格上方的文字抓取
+        if not official_time:
+            info_text = soup.find("div", {"class": "pull-left"})
+            if info_text and "時間" in info_text.text:
+                official_time = info_text.text.split("：")[-1].strip()
+
+        # 如果都抓不到，才用系統時間當備案
+        if not official_time:
+            official_time = datetime.now().strftime("%Y/%m/%d %H:%M")
 
         # 2. 抓取買進與賣出價
         buy_price = None
