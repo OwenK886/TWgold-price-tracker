@@ -61,9 +61,9 @@ def save_to_json(time_str, buy, sell):
                 history = json.load(f)
             except: history = []
     
-    # 檢查是否重複（如果掛牌時間跟上一筆一樣，就不重複存）
+    # 修改這裡：加入 print 方便除錯
     if history and history[-1]['time'] == time_str:
-        print("資料已存在，跳過儲存。")
+        print(f"台銀掛牌時間仍為 {time_str}，資料重複，跳過不儲存。")
         return
 
     history.append({
@@ -72,8 +72,13 @@ def save_to_json(time_str, buy, sell):
         "sell": sell
     })
     
-    # 保持最近 200 筆
-    if len(history) > 200: history = history[-200:]
+    # 儲存檔案
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(history, f, ensure_ascii=False, indent=4)
+    print(f"成功寫入一筆新資料：{time_str}")
+    
+    # 保持最近 500 筆
+    if len(history) > 500: history = history[-500:]
     
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(history, f, ensure_ascii=False, indent=4)
