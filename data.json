@@ -1,4 +1,11 @@
 [
+  { "time": "2025/01/02 16:00", "buy": 2767.0, "sell": 2801.0, "currency": "TWD" },
+  { "time": "2025/01/03 16:00", "buy": 2789.0, "sell": 2823.0, "currency": "TWD" },
+  { "time": "2025/01/06 16:00", "buy": 2764.0, "sell": 2798.0, "currency": "TWD" },
+  { "time": "2025/01/07 16:00", "buy": 2759.0, "sell": 2793.0, "currency": "TWD" },
+  { "time": "2025/01/08 16:00", "buy": 2787.0, "sell": 2821.0, "currency": "TWD" },
+  { "time": "2025/01/09 16:00", "buy": 2804.0, "sell": 2838.0, "currency": "TWD" },
+  { "time": "2025/01/10 16:00", "buy": 2819.0, "sell": 2853.0, "currency": "TWD" }
   { "time": "2025/01/13 16:00", "buy": 2842.0, "sell": 2876.0, "currency": "TWD" },
   { "time": "2025/01/14 16:00", "buy": 2814.0, "sell": 2848.0, "currency": "TWD" },
   { "time": "2025/01/15 16:00", "buy": 2833.0, "sell": 2867.0, "currency": "TWD" },
