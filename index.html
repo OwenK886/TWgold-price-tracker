@@ -17,7 +17,7 @@
 <body>
 
 <div class="container">
-    <h1>🇹🇼 台灣黃金存摺趨勢 (台銀)</h1>
+    <h1> 臺灣黃金價格(臺銀) </h1>
     <div class="price-box" id="latestPrice">數據載入中...</div>
     <canvas id="goldChart"></canvas>
 </div>
@@ -71,7 +71,7 @@
                     labels: labels,
                     datasets: [
                         {
-                            label: '本行賣出 (你要買的價格)',
+                            label: '臺銀賣出 (你要買的價格)',
                             data: sellPrices,
                             borderColor: '#d4af37',
                             backgroundColor: 'rgba(212, 175, 55, 0.1)',
@@ -79,7 +79,7 @@
                             tension: 0.2
                         },
                         {
-                            label: '本行買進 (你要賣的價格)',
+                            label: '臺銀買進 (你要賣的價格)',
                             data: buyPrices,
                             borderColor: '#555',
                             backgroundColor: 'transparent',
