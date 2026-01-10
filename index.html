@@ -3,119 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TWgold-price-tracker 台灣金價追蹤</title>
+    <title>TWgold-price-tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
-        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        h1 { color: #2c3e50; text-align: center; font-size: 1.5rem; margin-bottom: 20px; }
-        .dashboard { display: flex; justify-content: space-around; align-items: center; margin-bottom: 25px; padding: 15px; background: #fffcf0; border-radius: 10px; border: 1px solid #eee; }
-        .price-item { text-align: center; }
-        .label { font-size: 0.9rem; color: #666; margin-bottom: 5px; }
-        .value { font-size: 1.8rem; font-weight: bold; color: #d4af37; }
-        .change { font-size: 1rem; font-weight: bold; margin-top: 5px; }
-        .info-footer { font-size: 0.75rem; color: #999; text-align: center; margin-top: 15px; }
-        .up { color: #eb4d4b; } /* 台灣習慣：漲紅 */
-        .down { color: #2ecc71; } /* 台灣習慣：跌綠 */
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .price-box { font-size: 20px; text-align: center; margin: 20px 0; padding: 15px; background: #fffdf0; border-radius: 8px; border: 1px solid #eee; line-height: 1.6; }
+        .up { color: #eb4d4b; font-weight: bold; } /* 漲紅 */
+        .down { color: #2ecc71; font-weight: bold; } /* 跌綠 */
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🇹🇼 台灣銀行黃金存摺即時趨勢</h1>
-    
-    <div class="dashboard">
-        <div class="price-item">
-            <div class="label">目前賣出價 (TWD/g)</div>
-            <div id="sellPrice" class="value">---</div>
-            <div id="changeInfo" class="change">--</div>
-        </div>
-        <div class="price-item">
-            <div class="label">目前買進價</div>
-            <div id="buyPrice" style="font-size: 1.2rem; font-weight: bold; color: #555;">---</div>
-            <div id="spreadInfo" style="font-size: 0.8rem; color: #888;">價差: --</div>
-        </div>
-    </div>
-
+    <h1>🇹🇼 台灣黃金存摺趨勢 (台銀)</h1>
+    <div class="price-box" id="latestPrice">數據載入中...</div>
     <canvas id="goldChart"></canvas>
-    
-    <div id="updateTime" class="info-footer">載入中...</div>
 </div>
 
 <script>
     async function fetchData() {
         try {
-            const response = await fetch('data.json?t=' + new Date().getTime()); // 加時間戳防止快取
+            // 加入時間戳避免瀏覽器快取舊資料
+            const response = await fetch('data.json?t=' + new Date().getTime());
             const data = await response.json();
 
             const labels = data.map(item => item.time);
-            const sellPrices = data.map(item => item.sell);
             const buyPrices = data.map(item => item.buy);
+            const sellPrices = data.map(item => item.sell);
             
-            const lastSell = sellPrices[sellPrices.length - 1];
             const lastBuy = buyPrices[buyPrices.length - 1];
+            const lastSell = sellPrices[sellPrices.length - 1];
             const lastTime = labels[labels.length - 1];
+            const spread = (lastSell - lastBuy).toFixed(2);
 
-            // 1. 顯示基本價格
-            document.getElementById('sellPrice').innerText = lastSell;
-            document.getElementById('buyPrice').innerText = lastBuy;
-            document.getElementById('spreadInfo').innerText = `買賣價差: ${(lastSell - lastBuy).toFixed(2)}`;
-            document.getElementById('updateTime').innerText = `台銀最後掛牌時間：${lastTime}`;
-
-            // 2. 計算漲跌 (與前一筆相比)
+            // 計算漲跌邏輯
+            let changeHtml = "";
             if (sellPrices.length >= 2) {
                 const prevSell = sellPrices[sellPrices.length - 2];
                 const diff = (lastSell - prevSell).toFixed(2);
                 const percent = ((diff / prevSell) * 100).toFixed(2);
-                const changeEl = document.getElementById('changeInfo');
                 
                 if (diff > 0) {
-                    changeEl.innerHTML = `<span class="up">▲ ${diff} (+${percent}%)</span>`;
+                    changeHtml = `<span class="up"> (▲ ${diff}, +${percent}%)</span>`;
                 } else if (diff < 0) {
-                    changeEl.innerHTML = `<span class="down">▼ ${Math.abs(diff)} (${percent}%)</span>`;
+                    changeHtml = `<span class="down"> (▼ ${Math.abs(diff)}, ${percent}%)</span>`;
                 } else {
-                    changeEl.innerHTML = `<span style="color:#999">持平</span>`;
+                    changeHtml = `<span style="color:#888"> (持平)</span>`;
                 }
             }
 
-            // 3. 繪製圖表
+            // 更新顯示畫面
+            document.getElementById('latestPrice').innerHTML = `
+                <div style="font-size: 0.8em; color: #666;">掛牌時間：${lastTime}</div>
+                <div style="font-weight: bold; color: #d4af37; font-size: 1.2em;">
+                    賣出：${lastSell}${changeHtml} | 買進：${lastBuy}
+                </div>
+                <div style="font-size: 0.7em; color: #888;">目前買賣價差：${spread} TWD/g</div>
+            `;
+
+            // 繪製圖表
             const ctx = document.getElementById('goldChart').getContext('2d');
             new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: '本行賣出',
-                        data: sellPrices,
-                        borderColor: '#d4af37',
-                        backgroundColor: 'rgba(212, 175, 55, 0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }, {
-                        label: '本行買進',
-                        data: buyPrices,
-                        borderColor: '#7f8c8d',
-                        borderDash: [5, 5],
-                        fill: false,
-                        tension: 0.3
-                    }]
+                    datasets: [
+                        {
+                            label: '本行賣出 (你要買的價格)',
+                            data: sellPrices,
+                            borderColor: '#d4af37',
+                            backgroundColor: 'rgba(212, 175, 55, 0.1)',
+                            fill: true,
+                            tension: 0.2
+                        },
+                        {
+                            label: '本行買進 (你要賣的價格)',
+                            data: buyPrices,
+                            borderColor: '#555',
+                            backgroundColor: 'transparent',
+                            borderDash: [5, 5], // 買進價使用虛線區分
+                            tension: 0.2
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
-                    plugins: {
-                        legend: { position: 'bottom' }
-                    },
+                    interaction: { mode: 'index', intersect: false },
                     scales: {
-                        y: { ticks: { callback: value => 'NT$' + value } }
+                        y: { beginAtZero: false }
                     }
                 }
             });
         } catch (error) {
-            console.error('Fetch error:', error);
-            document.getElementById('updateTime').innerText = '數據讀取失敗，請確認爬蟲是否已產生 data.json';
+            console.error('加載失敗:', error);
+            document.getElementById('latestPrice').innerText = '暫無數據，請確認 data.json 是否正確產出';
         }
     }
-
     fetchData();
 </script>
 
