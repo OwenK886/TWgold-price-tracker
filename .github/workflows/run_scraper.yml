@@ -31,11 +31,16 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add data.json
-          # 檢查是否有變動，有的話才 commit
-          if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Update gold price"
-            git push
+          # 先檢查檔案是否存在，才進行 git add
+          if [ -f data.json ]; then
+            git add data.json
+            if [ -n "$(git status --porcelain)" ]; then
+              git commit -m "Update gold price: $(date)"
+              git push
+            else
+              echo "資料無變動，無需更新。"
+            fi
           else
-            echo "沒有資料變動，跳過更新"
+            echo "錯誤：找不到 data.json 檔案，請檢查爬蟲日誌。"
+            exit 1
           fi
