@@ -8,47 +8,58 @@
     <style>
         body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
         .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
+        h1 { color: #333; text-align: center; margin-bottom: 5px; }
         .price-box { font-size: 20px; text-align: center; margin: 20px 0; padding: 15px; background: #fffdf0; border-radius: 8px; border: 1px solid #eee; line-height: 1.6; }
-        .up { color: #eb4d4b; font-weight: bold; } /* 漲紅 */
-        .down { color: #2ecc71; font-weight: bold; } /* 跌綠 */
+        .up { color: #eb4d4b; font-weight: bold; } 
+        .down { color: #2ecc71; font-weight: bold; }
+        /* 表格樣式 */
+        .table-container { margin-top: 30px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { background-color: #f8f9fa; padding: 12px; border-bottom: 2px solid #dee2e6; text-align: center; }
+        td { padding: 10px; border-bottom: 1px solid #eee; text-align: center; }
+        tr:hover { background-color: #fcfcfc; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1> 臺灣黃金價格(臺銀) </h1>
-    <p style="text-align:center; font-size:12px; color:gray; margin-top:-15px; margin-bottom:20px;">
+    <h1>臺灣黃金價格(臺銀)</h1>
+    <p style="text-align:center; font-size:12px; color:gray; margin-bottom:20px;">
         數據來源：臺灣銀行新臺幣黃金牌價
     </p>
-    
+
     <div class="price-box" id="latestPrice">數據載入中...</div>
+    
     <canvas id="goldChart"></canvas>
-<div style="margin-top: 30px;">
+
+    <div class="table-container">
         <h3 style="text-align: center; color: #333;">歷史價格清單</h3>
-        <div style="overflow-x: auto;">
-            <table id="priceTable" style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
-                <thead>
-                    <tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                        <th style="padding: 10px; text-align: left;">掛牌時間</th>
-                        <th style="padding: 10px; text-align: right;">賣出價</th>
-                        <th style="padding: 10px; text-align: right;">買進價</th>
-                        <th style="padding: 10px; text-align: right;">價差</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    </tbody>
-            </table>
-        </div>
-    </div>    
+        <table>
+            <thead>
+                <tr>
+                    <th>掛牌時間</th>
+                    <th>賣出價</th>
+                    <th>買進價</th>
+                    <th>價差</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
     async function fetchData() {
         try {
-            // 加入時間戳避免瀏覽器快取舊資料
             const response = await fetch('data.json?t=' + new Date().getTime());
+            if (!response.ok) throw new Error('無法讀取 data.json');
             const data = await response.json();
+
+            if (!data || data.length === 0) {
+                document.getElementById('latestPrice').innerText = '尚無數據，等待爬蟲執行中...';
+                return;
+            }
 
             const labels = data.map(item => item.time);
             const buyPrices = data.map(item => item.buy);
@@ -59,23 +70,18 @@
             const lastTime = labels[labels.length - 1];
             const spread = (lastSell - lastBuy).toFixed(2);
 
-            // 計算漲跌邏輯
+            // 1. 處理漲跌文字
             let changeHtml = "";
             if (sellPrices.length >= 2) {
                 const prevSell = sellPrices[sellPrices.length - 2];
                 const diff = (lastSell - prevSell).toFixed(2);
                 const percent = ((diff / prevSell) * 100).toFixed(2);
-                
-                if (diff > 0) {
-                    changeHtml = `<span class="up"> (▲ ${diff}, +${percent}%)</span>`;
-                } else if (diff < 0) {
-                    changeHtml = `<span class="down"> (▼ ${Math.abs(diff)}, ${percent}%)</span>`;
-                } else {
-                    changeHtml = `<span style="color:#888"> (持平)</span>`;
-                }
+                if (diff > 0) changeHtml = `<span class="up"> (▲ ${diff}, +${percent}%)</span>`;
+                else if (diff < 0) changeHtml = `<span class="down"> (▼ ${Math.abs(diff)}, ${percent}%)</span>`;
+                else changeHtml = `<span style="color:#888"> (持平)</span>`;
             }
 
-            // 更新顯示畫面
+            // 2. 更新上方即時資訊
             document.getElementById('latestPrice').innerHTML = `
                 <div style="font-size: 0.8em; color: #666;">掛牌時間：${lastTime}</div>
                 <div style="font-weight: bold; color: #d4af37; font-size: 1.2em;">
@@ -84,66 +90,38 @@
                 <div style="font-size: 0.7em; color: #888;">目前買賣價差：${spread} TWD/g</div>
             `;
 
-            // 繪製圖表
+            // 3. 繪製圖表
             const ctx = document.getElementById('goldChart').getContext('2d');
             new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        {
-                            label: '臺銀賣出 (你要買的價格)',
-                            data: sellPrices,
-                            borderColor: '#d4af37',
-                            backgroundColor: 'rgba(212, 175, 55, 0.1)',
-                            fill: true,
-                            tension: 0.2
-                        },
-                        {
-                            label: '臺銀買進 (你要賣的價格)',
-                            data: buyPrices,
-                            borderColor: '#555',
-                            backgroundColor: 'transparent',
-                            borderDash: [5, 5], // 買進價使用虛線區分
-                            tension: 0.2
-                        }
+                        { label: '臺銀賣出', data: sellPrices, borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.1)', fill: true, tension: 0.2, pointRadius: 4 },
+                        { label: '臺銀買進', data: buyPrices, borderColor: '#555', borderDash: [5, 5], fill: false, tension: 0.2, pointRadius: 4 }
                     ]
                 },
-                options: {
-                    responsive: true,
-                    interaction: { mode: 'index', intersect: false },
-                    scales: {
-                        y: { beginAtZero: false }
-                    }
-                }
+                options: { responsive: true, interaction: { mode: 'index', intersect: false } }
             });
+
+            // 4. 填充表格
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+            [...data].reverse().forEach(item => {
+                const row = `<tr>
+                    <td>${item.time}</td>
+                    <td style="font-weight:bold; color:#d4af37;">${item.sell}</td>
+                    <td>${item.buy}</td>
+                    <td style="color:#888;">${(item.sell - item.buy).toFixed(2)}</td>
+                </tr>`;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            });
+
         } catch (error) {
-            console.error('加載失敗:', error);
-            document.getElementById('latestPrice').innerText = '暫無數據，請確認 data.json 是否正確產出';
+            console.error('Error:', error);
+            document.getElementById('latestPrice').innerText = '數據載入失敗，請檢查 data.json 是否正確';
         }
     }
-    // --- 產生表格邏輯 ---
-            const tableBody = document.getElementById('tableBody');
-            tableBody.innerHTML = ''; // 清空現有內容
-
-            // 將資料反轉，讓最新的排在最前面
-            const reversedData = [...data].reverse();
-
-            reversedData.forEach(item => {
-                const row = document.createElement('tr');
-                row.style.borderBottom = "1px solid #eee";
-                
-                const spread = (item.sell - item.buy).toFixed(2);
-                
-                row.innerHTML = `
-                    <td style="padding: 10px; color: #666;">${item.time}</td>
-                    <td style="padding: 10px; text-align: right; font-weight: bold; color: #d4af37;">${item.sell}</td>
-                    <td style="padding: 10px; text-align: right; color: #555;">${item.buy}</td>
-                    <td style="padding: 10px; text-align: right; color: #888;">${spread}</td>
-                `;
-                tableBody.appendChild(row);
-            });
-    
     fetchData();
 </script>
 
