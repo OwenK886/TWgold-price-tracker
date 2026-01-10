@@ -75,10 +75,17 @@ def save_to_json(time_str, buy, sell):
         print(f"資料重複 ({time_str})，不再儲存。")
         return
 
-    history.append({"time": time_str, "buy": buy, "sell": sell})
+    # 加入 currency 欄位
+    history.append({
+        "time": time_str, 
+        "buy": buy, 
+        "sell": sell,
+        "currency": "TWD" # 這裡標註幣別
+    })
+    
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(history, f, ensure_ascii=False, indent=4)
-    print(f"資料已更新，目前總筆數: {len(history)}")
+    print(f"資料已更新 (TWD)，目前總筆數: {len(history)}")
 
 if __name__ == "__main__":
     get_gold_price()
