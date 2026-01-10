@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台灣貴金屬趨勢分析</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .price-box { font-size: 24px; text-align: center; margin: 20px 0; color: #d4af37; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>黃金存摺價格趨勢 (台銀)</h1>
+    <div class="price-box" id="latestPrice">載入中...</div>
+    <canvas id="goldChart"></canvas>
+</div>
+
+<script>
+    // 讀取你的 data.json
+    async function fetchData() {
+        try {
+            // 注意：這裡直接讀取同目錄下的 data.json
+            const response = await fetch('data.json');
+            const data = await response.json();
+
+            // 處理數據
+            const labels = data.map(item => item.time);
+            const prices = data.map(item => item.price);
+            
+            // 顯示最新價格
+            document.getElementById('latestPrice').innerText = `目前金價：${prices[prices.length - 1]} TWD/g`;
+
+            // 繪製圖表
+            const ctx = document.getElementById('goldChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '黃金價格 (TWD)',
+                        data: prices,
+                        borderColor: '#d4af37',
+                        backgroundColor: 'rgba(212, 175, 55, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: false } // 讓波動更明顯
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('數據加載失敗:', error);
+            document.getElementById('latestPrice').innerText = '暫無數據，請等待第一次爬蟲執行';
+        }
+    }
+
+    fetchData();
+</script>
+
+</body>
+</html>
