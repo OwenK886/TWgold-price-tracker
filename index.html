@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TWgold-price-tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <style>
         body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
         .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -32,97 +33,178 @@
     
     <canvas id="goldChart"></canvas>
 
-    <div class="table-container">
-        <h3 style="text-align: center; color: #333;">歷史價格清單</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>掛牌時間</th>
-                    <th>賣出價</th>
-                    <th>買進價</th>
-                    <th>價差</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody">
-                </tbody>
-        </table>
+<div class="table-container">
+    <h3 style="text-align: center; color: #333;">歷史價格清單</h3>
+    
+    <div style="display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center;">
+        <div>
+            <label>年度篩選：</label>
+            <select id="yearFilter" onchange="resetAndFetch()"></select>
+        </div>
+        <div id="pagination">
+            <button onclick="changePage(-1)">上一頁</button>
+            <span id="pageInfo">第 1 頁</span>
+            <button onclick="changePage(1)">下一頁</button>
+        </div>
     </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>掛牌時間</th>
+                <th>賣出價</th>
+                <th>買進價</th>
+                <th>價差</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
 </div>
 
 <script>
-    async function fetchData() {
-        try {
-            const response = await fetch('data.json?t=' + new Date().getTime());
-            if (!response.ok) throw new Error('無法讀取 data.json');
-            const data = await response.json();
+let rawData = []; // 存儲原始數據
+let filteredData = []; // 存儲篩選後的數據
+let currentPage = 1;
+const pageSize = 20;
 
-            if (!data || data.length === 0) {
-                document.getElementById('latestPrice').innerText = '尚無數據，等待爬蟲執行中...';
-                return;
-            }
-
-            const labels = data.map(item => item.time);
-            const buyPrices = data.map(item => item.buy);
-            const sellPrices = data.map(item => item.sell);
-            
-            const lastBuy = buyPrices[buyPrices.length - 1];
-            const lastSell = sellPrices[sellPrices.length - 1];
-            const lastTime = labels[labels.length - 1];
-            const spread = (lastSell - lastBuy).toFixed(2);
-
-            // 1. 處理漲跌文字
-            let changeHtml = "";
-            if (sellPrices.length >= 2) {
-                const prevSell = sellPrices[sellPrices.length - 2];
-                const diff = (lastSell - prevSell).toFixed(2);
-                const percent = ((diff / prevSell) * 100).toFixed(2);
-                if (diff > 0) changeHtml = `<span class="up"> (▲ ${diff}, +${percent}%)</span>`;
-                else if (diff < 0) changeHtml = `<span class="down"> (▼ ${Math.abs(diff)}, ${percent}%)</span>`;
-                else changeHtml = `<span style="color:#888"> (持平)</span>`;
-            }
-
-            // 2. 更新上方即時資訊
-            document.getElementById('latestPrice').innerHTML = `
-                <div style="font-size: 0.8em; color: #666;">掛牌時間：${lastTime}</div>
-                <div style="font-weight: bold; color: #d4af37; font-size: 1.2em;">
-                    賣出：${lastSell}${changeHtml} | 買進：${lastBuy}
-                </div>
-                <div style="font-size: 0.7em; color: #888;">目前買賣價差：${spread} TWD/g</div>
-            `;
-
-            // 3. 繪製圖表
-            const ctx = document.getElementById('goldChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: '臺銀賣出', data: sellPrices, borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.1)', fill: true, tension: 0.2, pointRadius: 4 },
-                        { label: '臺銀買進', data: buyPrices, borderColor: '#555', borderDash: [5, 5], fill: false, tension: 0.2, pointRadius: 4 }
-                    ]
-                },
-                options: { responsive: true, interaction: { mode: 'index', intersect: false } }
-            });
-
-            // 4. 填充表格
-            const tableBody = document.getElementById('tableBody');
-            tableBody.innerHTML = '';
-            [...data].reverse().forEach(item => {
-                const row = `<tr>
-                    <td>${item.time}</td>
-                    <td style="font-weight:bold; color:#d4af37;">${item.sell}</td>
-                    <td>${item.buy}</td>
-                    <td style="color:#888;">${(item.sell - item.buy).toFixed(2)}</td>
-                </tr>`;
-                tableBody.insertAdjacentHTML('beforeend', row);
-            });
-
-        } catch (error) {
-            console.error('Error:', error);
-            document.getElementById('latestPrice').innerText = '數據載入失敗，請檢查 data.json 是否正確';
-        }
+async function fetchData() {
+    try {
+        const response = await fetch('data.json?t=' + new Date().getTime());
+        rawData = await response.json();
+        
+        // 1. 初始化年度選單 (轉換成民國年)
+        initYearFilter();
+        
+        // 2. 第一次執行
+        updateDisplay();
+        
+    } catch (error) {
+        console.error('載入失敗:', error);
     }
-    fetchData();
+}
+
+function initYearFilter() {
+    const yearSelect = document.getElementById('yearFilter');
+    const years = new Set();
+    years.add("全部");
+    
+    rawData.forEach(item => {
+        const westernYear = item.time.split('/')[0];
+        const minguoYear = westernYear - 1911;
+        years.add(`民國 ${minguoYear} 年`);
+    });
+
+    yearSelect.innerHTML = '';
+    years.forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.innerText = y;
+        yearSelect.appendChild(opt);
+    });
+}
+
+function updateDisplay() {
+    // 篩選數據
+    const selectedYear = document.getElementById('yearFilter').value;
+    if (selectedYear === "全部") {
+        filteredData = [...rawData].reverse();
+    } else {
+        const targetWesternYear = parseInt(selectedYear.replace('民國 ', '').replace(' 年', '')) + 1911;
+        filteredData = rawData.filter(item => item.time.startsWith(targetWesternYear.toString())).reverse();
+    }
+
+    renderTable();
+    renderChart();
+    updateTopInfo();
+}
+
+function renderTable() {
+    const tableBody = document.getElementById('tableBody');
+    tableBody.innerHTML = '';
+    
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    const pageData = filteredData.slice(start, end);
+
+    pageData.forEach(item => {
+        const row = `<tr>
+            <td>${item.time}</td>
+            <td style="font-weight:bold; color:#d4af37;">${item.sell}</td>
+            <td>${item.buy}</td>
+            <td style="color:#888;">${(item.sell - item.buy).toFixed(2)}</td>
+        </tr>`;
+        tableBody.insertAdjacentHTML('beforeend', row);
+    });
+
+    document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${Math.ceil(filteredData.length / pageSize)} 頁`;
+}
+
+function changePage(step) {
+    const maxPage = Math.ceil(filteredData.length / pageSize);
+    currentPage += step;
+    if (currentPage < 1) currentPage = 1;
+    if (currentPage > maxPage) currentPage = maxPage;
+    renderTable();
+}
+
+function resetAndFetch() {
+    currentPage = 1;
+    updateDisplay();
+}
+
+function renderChart() {
+    const ctx = document.getElementById('goldChart').getContext('2d');
+    if (window.myGoldChart) window.myGoldChart.destroy();
+
+    const labels = rawData.map(item => item.time);
+    const sellPrices = rawData.map(item => item.sell);
+    const buyPrices = rawData.map(item => item.buy);
+
+    window.myGoldChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: '賣出', data: sellPrices, borderColor: '#d4af37', fill: false, tension: 0.1, pointRadius: 2 },
+                { label: '買進', data: buyPrices, borderColor: '#555', borderDash: [5, 5], fill: false, tension: 0.1, pointRadius: 2 }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {
+                    // 設定預覽範圍：顯示最後 30 個點 (約一個月)
+                    min: labels.length > 30 ? labels[labels.length - 30] : labels[0],
+                    max: labels[labels.length - 1]
+                }
+            },
+            plugins: {
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x', // 只允許水平滾動
+                    },
+                    zoom: {
+                        wheel: { enabled: true },
+                        pinch: { enabled: true },
+                        mode: 'x',
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateTopInfo() {
+    const last = rawData[rawData.length - 1];
+    if (!last) return;
+    document.getElementById('latestPrice').innerHTML = `
+        <div style="font-size: 0.8em; color: #666;">最新掛牌：${last.time} (${last.currency})</div>
+        <div style="font-weight: bold; color: #d4af37; font-size: 1.2em;">賣出：${last.sell} | 買進：${last.buy}</div>
+    `;
+}
+    
+fetchData();
 </script>
 
 </body>
