@@ -5,66 +5,60 @@ import os
 from datetime import datetime
 
 def get_gold_price():
-    # 嘗試兩個不同的 URL，增加成功率
-    urls = [
-        "https://rate.bot.com.tw/gold?Lang=zh-TW",
-        "https://rate.bot.com.tw/gold/csv/ltm/TWD/0"
-    ]
+    url = "https://rate.bot.com.tw/gold?Lang=zh-TW"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
     
-    price = None
-    
-    for url in urls:
-        try:
-            print(f"嘗試抓取: {url}")
-            response = requests.get(url, headers=headers, timeout=10)
-            print(f"連線狀態碼: {response.status_code}")
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 1. 抓取掛牌時間
+        # 台銀網頁上會有一個「牌價最後更新時間：2026/01/10 12:00」
+        time_element = soup.find("span", {"class": "time"})
+        official_time = time_element.text.strip() if time_element else datetime.now().strftime("%Y/%m/%d %H:%M")
+
+        # 2. 抓取買進與賣出價
+        buy_price = None
+        sell_price = None
+        
+        # 尋找第一組新台幣計價的買進與賣出
+        buy_td = soup.find("td", {"data-table": "本行買進", "class": "text-right"})
+        sell_td = soup.find("td", {"data-table": "本行賣出", "class": "text-right"})
+        
+        if buy_td and sell_td:
+            buy_price = float(buy_td.text.strip().replace(',', ''))
+            sell_price = float(sell_td.text.strip().replace(',', ''))
+            print(f"抓取成功: 掛牌時間={official_time}, 買進={buy_price}, 賣出={sell_price}")
             
-            if response.status_code == 200:
-                # 如果是 HTML 頁面
-                soup = BeautifulSoup(response.text, 'html.parser')
-                # 關鍵：台銀的行動版與桌機版結構不同，我們用更廣的搜尋
-                tds = soup.find_all('td')
-                for td in tds:
-                    # 尋找含有價格的屬性
-                    if td.get('data-table') == "本行賣出" or "text-right" in td.get('class', []):
-                        val = td.get_text().strip().replace(',', '')
-                        if val.replace('.', '', 1).isdigit() and len(val) > 2:
-                            price = float(val)
-                            print(f"成功在網頁中找到價格: {price}")
-                            break
-                if price: break
-        except Exception as e:
-            print(f"嘗試 {url} 時發生錯誤: {e}")
+            save_to_json(official_time, buy_price, sell_price)
+        else:
+            print("找不到價格標籤，請檢查網頁結構。")
 
-    if price:
-        save_to_json(price)
-    else:
-        print("!!! 關鍵錯誤：所有抓取方式都失敗了 !!!")
-        # 印出部分網頁原始碼，讓我們診斷是否被擋或結構改變
-        print("網頁前 300 個字：", response.text[:300])
+    except Exception as e:
+        print(f"執行出錯: {e}")
 
-def save_to_json(price):
+def save_to_json(time_str, buy, sell):
     filename = 'data.json'
     history = []
-    
-    # 如果檔案存在就讀取，不存在就建立新的
     if os.path.exists(filename):
         with open(filename, 'r', encoding='utf-8') as f:
             try:
                 history = json.load(f)
-            except:
-                history = []
+            except: history = []
     
+    # 檢查是否重複（如果掛牌時間跟上一筆一樣，就不重複存）
+    if history and history[-1]['time'] == time_str:
+        print("資料已存在，跳過儲存。")
+        return
+
     history.append({
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "price": price
+        "time": time_str,
+        "buy": buy,
+        "sell": sell
     })
     
-    # 寫入檔案
+    # 保持最近 200 筆
+    if len(history) > 200: history = history[-200:]
+    
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(history, f, ensure_ascii=False, indent=4)
-    print(f"成功！檔案已儲存。目前總計 {len(history)} 筆數據。")
-
-if __name__ == "__main__":
-    get_gold_price()
