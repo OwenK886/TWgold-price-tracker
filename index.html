@@ -3,208 +3,275 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TWgold-price-tracker</title>
+    <title>臺灣黃金價格追蹤 - 臺灣銀行新臺幣黃金牌價</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
-        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; margin-bottom: 5px; }
-        .price-box { font-size: 20px; text-align: center; margin: 20px 0; padding: 15px; background: #fffdf0; border-radius: 8px; border: 1px solid #eee; line-height: 1.6; }
-        .up { color: #eb4d4b; font-weight: bold; } 
-        .down { color: #2ecc71; font-weight: bold; }
+        :root {
+            --primary-gold: #d4af37;
+            --dark-gold: #b8860b;
+            --light-bg: #f8f9fa;
+            --text-main: #2c3e50;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: var(--light-bg); color: var(--text-main); }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h1 { text-align: center; margin-bottom: 5px; color: var(--text-main); }
+        .source-tag { text-align: center; font-size: 13px; color: #7f8c8d; margin-bottom: 20px; }
+        
+        /* 價格看板 */
+        .price-box { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fffcf0; border: 1px solid #f1e4bc; border-radius: 10px; padding: 20px; margin-bottom: 25px; }
+        .main-price { font-size: 32px; font-weight: bold; color: var(--dark-gold); margin: 5px 0; }
+        .sub-info { font-size: 14px; color: #666; }
+        
+        /* 篩選與分頁控制項 */
+        .controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 15px; }
+        
+        /* 分段按鈕樣式 (Range Filter) */
+        .filter-group { display: flex; align-items: center; }
+        .btn-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--primary-gold); }
+        .range-btn { background: white; border: none; border-right: 1px solid var(--primary-gold); color: var(--dark-gold); padding: 8px 16px; cursor: pointer; font-size: 14px; transition: 0.2s; }
+        .range-btn:last-child { border-right: none; }
+        .range-btn.active { background: var(--primary-gold); color: white; }
+        .range-btn:hover:not(.active) { background: #fff9e6; }
+
+        /* 分頁按鈕樣式 */
+        .pagination-group { display: flex; align-items: center; gap: 5px; }
+        .pagination-group button { background: white; border: 1px solid #ddd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 16px; color: #555; }
+        .pagination-group button:hover:not(:disabled) { border-color: var(--primary-gold); color: var(--primary-gold); }
+        .pagination-group button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #pageInfo { font-size: 14px; font-weight: bold; margin: 0 10px; min-width: 80px; text-align: center; }
+
         /* 表格樣式 */
-        .table-container { margin-top: 30px; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { background-color: #f8f9fa; padding: 12px; border-bottom: 2px solid #dee2e6; text-align: center; }
-        td { padding: 10px; border-bottom: 1px solid #eee; text-align: center; }
-        tr:hover { background-color: #fcfcfc; }
+        .table-wrapper { margin-top: 10px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 500px; }
+        th { background: #f1f3f5; padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6; color: #495057; }
+        td { padding: 12px; border-bottom: 1px solid #eee; text-align: center; }
+        tr:hover { background: #fcfcfc; }
+        .minguo-date { color: #2980b9; font-weight: bold; }
+        .western-date { color: #999; font-size: 0.85em; display: block; }
+        
+        .up { color: #e74c3c; font-weight: bold; } 
+        .down { color: #27ae60; font-weight: bold; }
+
+        @media (max-width: 600px) {
+            .controls { flex-direction: column; align-items: stretch; }
+            .btn-group { width: 100%; justify-content: center; }
+            .range-btn { flex: 1; padding: 8px 5px; font-size: 12px; }
+            .pagination-group { justify-content: center; }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>臺灣黃金價格(臺銀)</h1>
-    <p style="text-align:center; font-size:12px; color:gray; margin-bottom:20px;">
-        數據來源：臺灣銀行新臺幣黃金牌價
-    </p>
+    <p class="source-tag">數據來源：臺灣銀行新臺幣黃金牌價</p>
 
     <div class="price-box" id="latestPrice">數據載入中...</div>
     
-    <canvas id="goldChart"></canvas>
+    <div style="position: relative; height: 350px; margin-bottom: 20px;">
+        <canvas id="goldChart"></canvas>
+    </div>
 
-<div class="table-container">
-    <h3 style="text-align: center; color: #333;">歷史價格清單</h3>
-    
-    <div style="display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center;">
-        <div>
-            <label>年度篩選：</label>
-            <select id="yearFilter" onchange="resetAndFetch()"></select>
+    <div class="controls">
+        <div class="filter-group">
+            <div class="btn-group" id="rangeBtns">
+                <button class="range-btn" onclick="setRange('近1週', this)">近1週</button>
+                <button class="range-btn" onclick="setRange('近1月', this)">近1月</button>
+                <button class="range-btn active" onclick="setRange('近1年', this)">近1年</button>
+                <button class="range-btn" onclick="setRange('今年', this)">今年</button>
+                <button class="range-btn" onclick="setRange('全部', this)">全部</button>
+            </div>
         </div>
-        <div id="pagination">
-            <button onclick="changePage(-1)">上一頁</button>
+
+        <div class="pagination-group">
+            <button onclick="goToPage('first')" title="第一頁">«</button>
+            <button onclick="changePage(-1)" id="prevBtn">‹</button>
             <span id="pageInfo">第 1 頁</span>
-            <button onclick="changePage(1)">下一頁</button>
+            <button onclick="changePage(1)" id="nextBtn">›</button>
+            <button onclick="goToPage('last')" title="最後一頁">»</button>
         </div>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>掛牌時間</th>
-                <th>賣出價</th>
-                <th>買進價</th>
-                <th>價差</th>
-            </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-    </table>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>掛牌時間 (民國/西元)</th>
+                    <th>賣出價</th>
+                    <th>買進價</th>
+                    <th>價差</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-let rawData = []; // 存儲原始數據
-let filteredData = []; // 存儲篩選後的數據
-let currentPage = 1;
-const pageSize = 20;
+    let rawData = [];       // 原始資料 (由舊到新)
+    let filteredData = [];  // 篩選後資料 (由新到舊，供表格使用)
+    let currentPage = 1;
+    const pageSize = 20;
+    let myChart = null;
+    let currentRange = '近1年';
 
-async function fetchData() {
-    try {
-        const response = await fetch('data.json?t=' + new Date().getTime());
-        rawData = await response.json();
-        
-        // 1. 初始化年度選單 (轉換成民國年)
-        initYearFilter();
-        
-        // 2. 第一次執行
-        updateDisplay();
-        
-    } catch (error) {
-        console.error('載入失敗:', error);
-    }
-}
-
-function initYearFilter() {
-    const yearSelect = document.getElementById('yearFilter');
-    const years = new Set();
-    years.add("全部");
-    
-    rawData.forEach(item => {
-        const westernYear = item.time.split('/')[0];
-        const minguoYear = westernYear - 1911;
-        years.add(`民國 ${minguoYear} 年`);
-    });
-
-    yearSelect.innerHTML = '';
-    years.forEach(y => {
-        const opt = document.createElement('option');
-        opt.value = y;
-        opt.innerText = y;
-        yearSelect.appendChild(opt);
-    });
-}
-
-function updateDisplay() {
-    // 篩選數據
-    const selectedYear = document.getElementById('yearFilter').value;
-    if (selectedYear === "全部") {
-        filteredData = [...rawData].reverse();
-    } else {
-        const targetWesternYear = parseInt(selectedYear.replace('民國 ', '').replace(' 年', '')) + 1911;
-        filteredData = rawData.filter(item => item.time.startsWith(targetWesternYear.toString())).reverse();
+    // 初始化
+    async function init() {
+        try {
+            const response = await fetch('data.json?t=' + new Date().getTime());
+            rawData = await response.json();
+            if (!rawData || rawData.length === 0) throw new Error("無數據");
+            
+            updateTopDisplay();
+            applyFilter('近1年'); // 預設顯示近 1 年
+        } catch (e) {
+            document.getElementById('latestPrice').innerText = "數據載入失敗：" + e.message;
+        }
     }
 
-    renderTable();
-    renderChart();
-    updateTopInfo();
-}
+    // 範圍篩選切換
+    function setRange(range, btn) {
+        document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentRange = range;
+        currentPage = 1;
+        applyFilter(range);
+    }
 
-function renderTable() {
-    const tableBody = document.getElementById('tableBody');
-    tableBody.innerHTML = '';
-    
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-    const pageData = filteredData.slice(start, end);
+    function applyFilter(range) {
+        const lastDataPoint = new Date(rawData[rawData.length - 1].time);
+        let cutoff = new Date(lastDataPoint);
 
-    pageData.forEach(item => {
-        const row = `<tr>
-            <td>${item.time}</td>
-            <td style="font-weight:bold; color:#d4af37;">${item.sell}</td>
-            <td>${item.buy}</td>
-            <td style="color:#888;">${(item.sell - item.buy).toFixed(2)}</td>
-        </tr>`;
-        tableBody.insertAdjacentHTML('beforeend', row);
-    });
+        if (range === '近1週') cutoff.setDate(lastDataPoint.getDate() - 7);
+        else if (range === '近1月') cutoff.setMonth(lastDataPoint.getMonth() - 1);
+        else if (range === '近1年') cutoff.setFullYear(lastDataPoint.getFullYear() - 1);
+        else if (range === '今年') cutoff = new Date(lastDataPoint.getFullYear(), 0, 1);
+        else cutoff = new Date(0); // 全部
 
-    document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${Math.ceil(filteredData.length / pageSize)} 頁`;
-}
+        // 過濾並反轉 (表格用最新到最舊)
+        filteredData = rawData.filter(d => new Date(d.time) >= cutoff).reverse();
+        
+        renderTable();
+        renderChart();
+    }
 
-function changePage(step) {
-    const maxPage = Math.ceil(filteredData.length / pageSize);
-    currentPage += step;
-    if (currentPage < 1) currentPage = 1;
-    if (currentPage > maxPage) currentPage = maxPage;
-    renderTable();
-}
+    // 表格繪製
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+        
+        const start = (currentPage - 1) * pageSize;
+        const pageItems = filteredData.slice(start, start + pageSize);
+        const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
 
-function resetAndFetch() {
-    currentPage = 1;
-    updateDisplay();
-}
+        pageItems.forEach(item => {
+            const dateParts = item.time.split(' ')[0].split('/');
+            const minguoYear = parseInt(dateParts[0]) - 1911;
+            const minguoDate = `${minguoYear}/${dateParts[1]}/${dateParts[2]}`;
+            
+            const row = `<tr>
+                <td>
+                    <span class="minguo-date">${minguoDate}</span>
+                    <span class="western-date">${item.time}</span>
+                </td>
+                <td style="font-weight:bold; color:var(--dark-gold);">${item.sell}</td>
+                <td>${item.buy}</td>
+                <td style="color:#888;">${(item.sell - item.buy).toFixed(1)}</td>
+            </tr>`;
+            tbody.insertAdjacentHTML('beforeend', row);
+        });
 
-function renderChart() {
-    const ctx = document.getElementById('goldChart').getContext('2d');
-    if (window.myGoldChart) window.myGoldChart.destroy();
+        document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${totalPages} 頁`;
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage === totalPages;
+    }
 
-    const labels = rawData.map(item => item.time);
-    const sellPrices = rawData.map(item => item.sell);
-    const buyPrices = rawData.map(item => item.buy);
+    // 分頁功能
+    function changePage(step) {
+        currentPage += step;
+        renderTable();
+        scrollToTable();
+    }
 
-    window.myGoldChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                { label: '賣出', data: sellPrices, borderColor: '#d4af37', fill: false, tension: 0.1, pointRadius: 2 },
-                { label: '買進', data: buyPrices, borderColor: '#555', borderDash: [5, 5], fill: false, tension: 0.1, pointRadius: 2 }
-            ]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                x: {
-                    // 設定預覽範圍：顯示最後 30 個點 (約一個月)
-                    min: labels.length > 30 ? labels[labels.length - 30] : labels[0],
-                    max: labels[labels.length - 1]
-                }
+    function goToPage(target) {
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        if (target === 'first') currentPage = 1;
+        if (target === 'last') currentPage = totalPages;
+        renderTable();
+        scrollToTable();
+    }
+
+    function scrollToTable() {
+        window.scrollTo({ top: document.querySelector('.controls').offsetTop - 20, behavior: 'smooth' });
+    }
+
+    // 圖表繪製 (含自動預覽與滾動)
+    function renderChart() {
+        const ctx = document.getElementById('goldChart').getContext('2d');
+        if (myChart) myChart.destroy();
+
+        // 圖表始終顯示全部已載入數據，以支援完整滾動
+        const labels = rawData.map(d => d.time);
+        const sellPrices = rawData.map(d => d.sell);
+        const buyPrices = rawData.map(d => d.buy);
+
+        // 計算最近一個月的起始標籤索引，用於預覽
+        const oneMonthAgo = new Date(rawData[rawData.length - 1].time);
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        const startIndex = rawData.findIndex(d => new Date(d.time) >= oneMonthAgo);
+
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '賣出價', data: sellPrices, borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.05)', fill: true, tension: 0.1, pointRadius: 2 },
+                    { label: '買進價', data: buyPrices, borderColor: '#7f8c8d', borderDash: [5, 5], tension: 0.1, pointRadius: 0 }
+                ]
             },
-            plugins: {
-                zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'x', // 只允許水平滾動
-                    },
-                    zoom: {
-                        wheel: { enabled: true },
-                        pinch: { enabled: true },
-                        mode: 'x',
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        // 實現「預覽最近一個月」：設定 x 軸的初始可視範圍
+                        min: labels[startIndex > -1 ? startIndex : Math.max(0, labels.length - 30)],
+                        max: labels[labels.length - 1]
                     }
+                },
+                plugins: {
+                    zoom: {
+                        pan: { enabled: true, mode: 'x' }, // 允許水平拖動
+                        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+                    },
+                    tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', padding: 10 }
                 }
             }
-        }
-    });
-}
+        });
+    }
 
-function updateTopInfo() {
-    const last = rawData[rawData.length - 1];
-    if (!last) return;
-    document.getElementById('latestPrice').innerHTML = `
-        <div style="font-size: 0.8em; color: #666;">最新掛牌：${last.time} (${last.currency})</div>
-        <div style="font-weight: bold; color: #d4af37; font-size: 1.2em;">賣出：${last.sell} | 買進：${last.buy}</div>
-    `;
-}
-    
-fetchData();
+    // 頂部即時資訊
+    function updateTopDisplay() {
+        const last = rawData[rawData.length - 1];
+        const prev = rawData.length > 1 ? rawData[rawData.length - 2] : last;
+        const diff = (last.sell - prev.sell).toFixed(1);
+        const percent = ((diff / prev.sell) * 100).toFixed(2);
+        
+        let trendHtml = "";
+        if (diff > 0) trendHtml = `<span class="up">▲ ${diff} (+${percent}%)</span>`;
+        else if (diff < 0) trendHtml = `<span class="down">▼ ${Math.abs(diff)} (${percent}%)</span>`;
+        else trendHtml = `<span style="color:#999">持平</span>`;
+
+        document.getElementById('latestPrice').innerHTML = `
+            <div class="sub-info">最後更新時間：${last.time} (TWD)</div>
+            <div class="main-price">${last.sell} <span style="font-size:16px; color:#666; font-weight:normal;">TWD/g</span></div>
+            <div style="font-size:16px;">${trendHtml}</div>
+        `;
+    }
+
+    init();
 </script>
 
 </body>
