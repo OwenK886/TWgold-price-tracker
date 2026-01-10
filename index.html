@@ -26,8 +26,7 @@
         /* 篩選與分頁控制項 */
         .controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 15px; }
         
-        /* 分段按鈕樣式 (Range Filter) */
-        .filter-group { display: flex; align-items: center; }
+        /* 分段按鈕樣式 */
         .btn-group { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--primary-gold); }
         .range-btn { background: white; border: none; border-right: 1px solid var(--primary-gold); color: var(--dark-gold); padding: 8px 16px; cursor: pointer; font-size: 14px; transition: 0.2s; }
         .range-btn:last-child { border-right: none; }
@@ -67,7 +66,7 @@
     <h1>臺灣黃金價格(臺銀)</h1>
     <p class="source-tag">數據來源：臺灣銀行新臺幣黃金牌價</p>
 
-    <div class="price-box" id="latestPrice">數據載入中...</div>
+    <div class="price-box" id="latestPrice">載入中...</div>
     
     <div style="position: relative; height: 350px; margin-bottom: 20px;">
         <canvas id="goldChart"></canvas>
@@ -75,7 +74,7 @@
 
     <div class="controls">
         <div class="filter-group">
-            <div class="btn-group" id="rangeBtns">
+            <div class="btn-group">
                 <button class="range-btn" onclick="setRange('近1週', this)">近1週</button>
                 <button class="range-btn" onclick="setRange('近1月', this)">近1月</button>
                 <button class="range-btn active" onclick="setRange('近1年', this)">近1年</button>
@@ -109,32 +108,28 @@
 </div>
 
 <script>
-    let rawData = [];       // 原始資料 (由舊到新)
-    let filteredData = [];  // 篩選後資料 (由新到舊，供表格使用)
+    let rawData = [];
+    let filteredData = [];
     let currentPage = 1;
     const pageSize = 20;
     let myChart = null;
-    let currentRange = '近1年';
+    let selectedCutoffDate = null;
 
-    // 初始化
     async function init() {
         try {
             const response = await fetch('data.json?t=' + new Date().getTime());
             rawData = await response.json();
             if (!rawData || rawData.length === 0) throw new Error("無數據");
-            
             updateTopDisplay();
-            applyFilter('近1年'); // 預設顯示近 1 年
+            applyFilter('近1年');
         } catch (e) {
-            document.getElementById('latestPrice').innerText = "數據載入失敗：" + e.message;
+            document.getElementById('latestPrice').innerText = "數據載入失敗";
         }
     }
 
-    // 範圍篩選切換
     function setRange(range, btn) {
         document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        currentRange = range;
         currentPage = 1;
         applyFilter(range);
     }
@@ -147,20 +142,18 @@
         else if (range === '近1月') cutoff.setMonth(lastDataPoint.getMonth() - 1);
         else if (range === '近1年') cutoff.setFullYear(lastDataPoint.getFullYear() - 1);
         else if (range === '今年') cutoff = new Date(lastDataPoint.getFullYear(), 0, 1);
-        else cutoff = new Date(0); // 全部
+        else cutoff = new Date(0);
 
-        // 過濾並反轉 (表格用最新到最舊)
+        selectedCutoffDate = cutoff;
         filteredData = rawData.filter(d => new Date(d.time) >= cutoff).reverse();
         
         renderTable();
         renderChart();
     }
 
-    // 表格繪製
     function renderTable() {
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
-        
         const start = (currentPage - 1) * pageSize;
         const pageItems = filteredData.slice(start, start + pageSize);
         const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
@@ -168,13 +161,8 @@
         pageItems.forEach(item => {
             const dateParts = item.time.split(' ')[0].split('/');
             const minguoYear = parseInt(dateParts[0]) - 1911;
-            const minguoDate = `${minguoYear}/${dateParts[1]}/${dateParts[2]}`;
-            
             const row = `<tr>
-                <td>
-                    <span class="minguo-date">${minguoDate}</span>
-                    <span class="western-date">${item.time}</span>
-                </td>
+                <td><span class="minguo-date">${minguoYear}/${dateParts[1]}/${dateParts[2]}</span><span class="western-date">${item.time}</span></td>
                 <td style="font-weight:bold; color:var(--dark-gold);">${item.sell}</td>
                 <td>${item.buy}</td>
                 <td style="color:#888;">${(item.sell - item.buy).toFixed(1)}</td>
@@ -187,39 +175,29 @@
         document.getElementById('nextBtn').disabled = currentPage === totalPages;
     }
 
-    // 分頁功能
     function changePage(step) {
         currentPage += step;
         renderTable();
-        scrollToTable();
+        window.scrollTo({ top: document.querySelector('.controls').offsetTop - 20, behavior: 'smooth' });
     }
 
     function goToPage(target) {
         const totalPages = Math.ceil(filteredData.length / pageSize);
-        if (target === 'first') currentPage = 1;
-        if (target === 'last') currentPage = totalPages;
+        currentPage = target === 'first' ? 1 : totalPages;
         renderTable();
-        scrollToTable();
-    }
-
-    function scrollToTable() {
         window.scrollTo({ top: document.querySelector('.controls').offsetTop - 20, behavior: 'smooth' });
     }
 
-    // 圖表繪製 (含自動預覽與滾動)
     function renderChart() {
         const ctx = document.getElementById('goldChart').getContext('2d');
         if (myChart) myChart.destroy();
 
-        // 圖表始終顯示全部已載入數據，以支援完整滾動
         const labels = rawData.map(d => d.time);
         const sellPrices = rawData.map(d => d.sell);
         const buyPrices = rawData.map(d => d.buy);
 
-        // 計算最近一個月的起始標籤索引，用於預覽
-        const oneMonthAgo = new Date(rawData[rawData.length - 1].time);
-        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-        const startIndex = rawData.findIndex(d => new Date(d.time) >= oneMonthAgo);
+        // 找出對應選定範圍的起始索引
+        const startIndex = rawData.findIndex(d => new Date(d.time) >= selectedCutoffDate);
 
         myChart = new Chart(ctx, {
             type: 'line',
@@ -236,43 +214,36 @@
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     x: {
-                        // 實現「預覽最近一個月」：設定 x 軸的初始可視範圍
-                        min: labels[startIndex > -1 ? startIndex : Math.max(0, labels.length - 30)],
+                        // 動態設定圖表顯示的範圍
+                        min: labels[startIndex > -1 ? startIndex : 0],
                         max: labels[labels.length - 1]
                     }
                 },
                 plugins: {
                     zoom: {
-                        pan: { enabled: true, mode: 'x' }, // 允許水平拖動
+                        pan: { enabled: true, mode: 'x' },
                         zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
-                    },
-                    tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', padding: 10 }
+                    }
                 }
             }
         });
     }
 
-    // 頂部即時資訊
     function updateTopDisplay() {
         const last = rawData[rawData.length - 1];
         const prev = rawData.length > 1 ? rawData[rawData.length - 2] : last;
         const diff = (last.sell - prev.sell).toFixed(1);
         const percent = ((diff / prev.sell) * 100).toFixed(2);
-        
-        let trendHtml = "";
-        if (diff > 0) trendHtml = `<span class="up">▲ ${diff} (+${percent}%)</span>`;
-        else if (diff < 0) trendHtml = `<span class="down">▼ ${Math.abs(diff)} (${percent}%)</span>`;
-        else trendHtml = `<span style="color:#999">持平</span>`;
+        let trend = diff > 0 ? `<span class="up">▲ ${diff} (+${percent}%)</span>` : (diff < 0 ? `<span class="down">▼ ${Math.abs(diff)} (${percent}%)</span>` : `<span style="color:#999">持平</span>`);
 
         document.getElementById('latestPrice').innerHTML = `
-            <div class="sub-info">最後更新時間：${last.time} (TWD)</div>
-            <div class="main-price">${last.sell} <span style="font-size:16px; color:#666; font-weight:normal;">TWD/g</span></div>
-            <div style="font-size:16px;">${trendHtml}</div>
+            <div class="sub-info">最後更新：${last.time}</div>
+            <div class="main-price">${last.sell} <small style="font-size:16px; color:#666; font-weight:normal;">TWD/g</small></div>
+            <div style="font-size:16px;">${trend}</div>
         `;
     }
 
     init();
 </script>
-
 </body>
 </html>
