@@ -3,63 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台灣貴金屬趨勢分析</title>
+    <title>TWgold-price-tracker 台灣金價追蹤</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
-        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
-        .price-box { font-size: 24px; text-align: center; margin: 20px 0; color: #d4af37; font-weight: bold; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h1 { color: #2c3e50; text-align: center; font-size: 1.5rem; margin-bottom: 20px; }
+        .dashboard { display: flex; justify-content: space-around; align-items: center; margin-bottom: 25px; padding: 15px; background: #fffcf0; border-radius: 10px; border: 1px solid #eee; }
+        .price-item { text-align: center; }
+        .label { font-size: 0.9rem; color: #666; margin-bottom: 5px; }
+        .value { font-size: 1.8rem; font-weight: bold; color: #d4af37; }
+        .change { font-size: 1rem; font-weight: bold; margin-top: 5px; }
+        .info-footer { font-size: 0.75rem; color: #999; text-align: center; margin-top: 15px; }
+        .up { color: #eb4d4b; } /* 台灣習慣：漲紅 */
+        .down { color: #2ecc71; } /* 台灣習慣：跌綠 */
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>黃金存摺價格趨勢 (台銀)</h1>
-    <div class="price-box" id="latestPrice">載入中...</div>
+    <h1>🇹🇼 台灣銀行黃金存摺即時趨勢</h1>
+    
+    <div class="dashboard">
+        <div class="price-item">
+            <div class="label">目前賣出價 (TWD/g)</div>
+            <div id="sellPrice" class="value">---</div>
+            <div id="changeInfo" class="change">--</div>
+        </div>
+        <div class="price-item">
+            <div class="label">目前買進價</div>
+            <div id="buyPrice" style="font-size: 1.2rem; font-weight: bold; color: #555;">---</div>
+            <div id="spreadInfo" style="font-size: 0.8rem; color: #888;">價差: --</div>
+        </div>
+    </div>
+
     <canvas id="goldChart"></canvas>
+    
+    <div id="updateTime" class="info-footer">載入中...</div>
 </div>
 
 <script>
-    // 讀取你的 data.json
     async function fetchData() {
         try {
-            // 注意：這裡直接讀取同目錄下的 data.json
-            const response = await fetch('data.json');
+            const response = await fetch('data.json?t=' + new Date().getTime()); // 加時間戳防止快取
             const data = await response.json();
 
-            // 處理數據
             const labels = data.map(item => item.time);
-            const prices = data.map(item => item.price);
+            const sellPrices = data.map(item => item.sell);
+            const buyPrices = data.map(item => item.buy);
             
-            // 顯示最新價格
-            document.getElementById('latestPrice').innerText = `目前金價：${prices[prices.length - 1]} TWD/g`;
+            const lastSell = sellPrices[sellPrices.length - 1];
+            const lastBuy = buyPrices[buyPrices.length - 1];
+            const lastTime = labels[labels.length - 1];
 
-            // 繪製圖表
+            // 1. 顯示基本價格
+            document.getElementById('sellPrice').innerText = lastSell;
+            document.getElementById('buyPrice').innerText = lastBuy;
+            document.getElementById('spreadInfo').innerText = `買賣價差: ${(lastSell - lastBuy).toFixed(2)}`;
+            document.getElementById('updateTime').innerText = `台銀最後掛牌時間：${lastTime}`;
+
+            // 2. 計算漲跌 (與前一筆相比)
+            if (sellPrices.length >= 2) {
+                const prevSell = sellPrices[sellPrices.length - 2];
+                const diff = (lastSell - prevSell).toFixed(2);
+                const percent = ((diff / prevSell) * 100).toFixed(2);
+                const changeEl = document.getElementById('changeInfo');
+                
+                if (diff > 0) {
+                    changeEl.innerHTML = `<span class="up">▲ ${diff} (+${percent}%)</span>`;
+                } else if (diff < 0) {
+                    changeEl.innerHTML = `<span class="down">▼ ${Math.abs(diff)} (${percent}%)</span>`;
+                } else {
+                    changeEl.innerHTML = `<span style="color:#999">持平</span>`;
+                }
+            }
+
+            // 3. 繪製圖表
             const ctx = document.getElementById('goldChart').getContext('2d');
             new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '黃金價格 (TWD)',
-                        data: prices,
+                        label: '本行賣出',
+                        data: sellPrices,
                         borderColor: '#d4af37',
                         backgroundColor: 'rgba(212, 175, 55, 0.1)',
                         fill: true,
+                        tension: 0.3
+                    }, {
+                        label: '本行買進',
+                        data: buyPrices,
+                        borderColor: '#7f8c8d',
+                        borderDash: [5, 5],
+                        fill: false,
                         tension: 0.3
                     }]
                 },
                 options: {
                     responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
                     scales: {
-                        y: { beginAtZero: false } // 讓波動更明顯
+                        y: { ticks: { callback: value => 'NT$' + value } }
                     }
                 }
             });
         } catch (error) {
-            console.error('數據加載失敗:', error);
-            document.getElementById('latestPrice').innerText = '暫無數據，請等待第一次爬蟲執行';
+            console.error('Fetch error:', error);
+            document.getElementById('updateTime').innerText = '數據讀取失敗，請確認爬蟲是否已產生 data.json';
         }
     }
 
