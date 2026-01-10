@@ -24,6 +24,23 @@
     
     <div class="price-box" id="latestPrice">數據載入中...</div>
     <canvas id="goldChart"></canvas>
+<div style="margin-top: 30px;">
+        <h3 style="text-align: center; color: #333;">歷史價格清單</h3>
+        <div style="overflow-x: auto;">
+            <table id="priceTable" style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                <thead>
+                    <tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                        <th style="padding: 10px; text-align: left;">掛牌時間</th>
+                        <th style="padding: 10px; text-align: right;">賣出價</th>
+                        <th style="padding: 10px; text-align: right;">買進價</th>
+                        <th style="padding: 10px; text-align: right;">價差</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>    
 </div>
 
 <script>
@@ -105,6 +122,28 @@
             document.getElementById('latestPrice').innerText = '暫無數據，請確認 data.json 是否正確產出';
         }
     }
+    // --- 產生表格邏輯 ---
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = ''; // 清空現有內容
+
+            // 將資料反轉，讓最新的排在最前面
+            const reversedData = [...data].reverse();
+
+            reversedData.forEach(item => {
+                const row = document.createElement('tr');
+                row.style.borderBottom = "1px solid #eee";
+                
+                const spread = (item.sell - item.buy).toFixed(2);
+                
+                row.innerHTML = `
+                    <td style="padding: 10px; color: #666;">${item.time}</td>
+                    <td style="padding: 10px; text-align: right; font-weight: bold; color: #d4af37;">${item.sell}</td>
+                    <td style="padding: 10px; text-align: right; color: #555;">${item.buy}</td>
+                    <td style="padding: 10px; text-align: right; color: #888;">${spread}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+    
     fetchData();
 </script>
 
