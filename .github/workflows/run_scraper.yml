@@ -23,10 +23,11 @@ jobs:
       - name: 執行爬蟲
         run: python main.py
 
-      - name: 將更新後的資料存回倉庫
+- name: 將更新後的資料存回倉庫
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data.json
-          git commit -m "Update gold price" || exit 0
+          # 如果沒有變化就不 commit，避免報錯
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update gold price"
           git push
