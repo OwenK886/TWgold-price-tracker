@@ -14,11 +14,12 @@ def get_gold_price():
         response = requests.get(url, headers=headers, timeout=10)
         html = response.text
         
-        # 1. 抓取掛牌時間
+        # 1. 抓取掛牌時間 (加入 \s+ 容許時間中間有奇怪的空格)
         official_time = ""
-        time_match = re.search(r'\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}', html)
+        time_match = re.search(r'\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}', html)
         if time_match:
-            official_time = time_match.group()
+            # 把可能的多餘空白換成單一空白，保持 JSON 漂亮
+            official_time = re.sub(r'\s+', ' ', time_match.group())
 
         # 2. 使用 BeautifulSoup 鎖定表格
         soup = BeautifulSoup(html, 'html.parser')
@@ -26,19 +27,19 @@ def get_gold_price():
         buy_price = None
         sell_price = None
         
-        # 尋找網頁中所有的表格列 (tr)
         rows = soup.find_all('tr')
         for row in rows:
-            # 將整列轉成純文字
             row_text = row.get_text(separator=' ', strip=True)
             
-            # 條件：如果這列的文字包含「1公克」與「黃金」(過濾掉空格干擾)
-            if '1公克' in row_text.replace(' ', '') and '黃金' in row_text:
-                print(f"成功找到目標列: {row_text}")
+            # 🚨 殺手鐧：清除字串中「所有」形式的空白字元 (包含 \xa0, \t, \n 等)
+            clean_text_no_space = re.sub(r'\s+', '', row_text)
+            
+            # 條件：只要這列裡面同時有 1公克 跟 黃金
+            if '1公克' in clean_text_no_space and '黃金' in clean_text_no_space:
                 
                 # 移除千分位逗號，並找出裡面的所有 4 位數以上的數字
-                clean_text = row_text.replace(',', '')
-                numbers = re.findall(r'(?<!\d)(\d{4,}(?:\.\d+)?)(?!\d)', clean_text)
+                clean_number_text = row_text.replace(',', '')
+                numbers = re.findall(r'(?<!\d)(\d{4,}(?:\.\d+)?)(?!\d)', clean_number_text)
                 
                 if len(numbers) >= 2:
                     p1 = float(numbers[0])
@@ -46,7 +47,7 @@ def get_gold_price():
                     buy_price = min(p1, p2)
                     sell_price = max(p1, p2)
                 
-                # 找到就跳出迴圈
+                # 找到目標就跳出迴圈
                 break
 
         if buy_price and sell_price and official_time:
