@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import re
+import sys
 
 def get_gold_price():
     url = "https://rate.bot.com.tw/gold?Lang=zh-TW"
@@ -12,17 +13,17 @@ def get_gold_price():
         response = requests.get(url, headers=headers, timeout=10)
         html = response.text
         
-        # 1. 抓取掛牌時間 (尋找 2026/01/09 19:50 格式)
+        # 1. 抓取掛牌時間
         official_time = ""
         time_match = re.search(r'\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}', html)
         if time_match:
             official_time = time_match.group()
 
-        # 2. 精準抓取價格：鎖定包含「1公克」的表格列 (<tr>...</tr>)
+        # 2. 精準抓取價格：加入 \s* 容許「1」和「公克」之間有空格
         buy_price = None
         sell_price = None
         
-        row_match = re.search(r'(<tr[^>]*>.*?1公克.*?</tr>)', html, re.DOTALL)
+        row_match = re.search(r'(<tr[^>]*>.*?1\s*公克.*?</tr>)', html, re.DOTALL)
         if row_match:
             row_html = row_match.group(1)
             # 清除所有 HTML 標籤，只保留純文字
@@ -44,9 +45,13 @@ def get_gold_price():
             save_to_json(official_time, buy_price, sell_price)
         else:
             print(f"解析失敗。時間:{official_time}, 找到的數字:{numbers if 'numbers' in locals() else '無'}")
+            print("請檢查台銀網頁結構是否又改版了。")
+            # 關鍵：主動拋出錯誤，讓 GitHub Action 亮紅燈
+            sys.exit(1) 
 
     except Exception as e:
         print(f"程式異常: {e}")
+        sys.exit(1) # 發生例外狀況時也回報失敗
 
 def save_to_json(time_str, buy, sell):
     filename = 'data.json'
