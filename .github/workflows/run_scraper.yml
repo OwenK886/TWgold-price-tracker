@@ -7,19 +7,22 @@ on:
     - cron: '0 4,10,14 * * 1-5'
   workflow_dispatch:
 
+# 加入這段環境變數，強制使用 Node.js 24 來消除警告
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 這是關鍵：明確給予這個任務寫入權限
     permissions:
       contents: write
       
     steps:
       - name: 複製倉庫內容
-        uses: actions/checkout@v4 # 👈 這裡升級到 v4
+        uses: actions/checkout@v4
 
       - name: 設定 Python
-        uses: actions/setup-python@v5 # 👈 這裡升級到 v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -33,7 +36,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          # 先檢查檔案是否存在，才進行 git add
           if [ -f data.json ]; then
             git add data.json
             if [ -n "$(git status --porcelain)" ]; then
