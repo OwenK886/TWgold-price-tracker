@@ -16,7 +16,11 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: var(--light-bg); color: var(--text-main); }
         .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         h1 { text-align: center; margin-bottom: 5px; color: var(--text-main); }
-        .source-tag { text-align: center; font-size: 13px; color: #7f8c8d; margin-bottom: 20px; }
+        .source-tag { text-align: center; font-size: 13px; color: #7f8c8d; margin-bottom: 8px; }
+        .freshness-status { width: fit-content; margin: 0 auto 20px; padding: 6px 10px; border-radius: 999px; font-size: 13px; }
+        .freshness-status.fresh { color: #237a43; background: #edf9f1; border: 1px solid #b9e3c7; }
+        .freshness-status.stale { color: #9a5b00; background: #fff7e6; border: 1px solid #f0ce8a; font-weight: 600; }
+        .freshness-status.error { color: #a93226; background: #fdf0ef; border: 1px solid #efc0bb; }
         
         /* 價格看板 */
         .price-box { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fffcf0; border: 1px solid #f1e4bc; border-radius: 10px; padding: 20px; margin-bottom: 25px; }
@@ -65,6 +69,7 @@
 <div class="container">
     <h1>臺灣黃金價格(臺銀)</h1>
     <p class="source-tag">數據來源：臺灣銀行新臺幣黃金牌價</p>
+    <div id="freshnessStatus" class="freshness-status" role="status" aria-live="polite">正在檢查資料時間...</div>
 
     <div class="price-box" id="latestPrice">載入中...</div>
     
@@ -112,41 +117,127 @@
     let filteredData = [];
     let currentPage = 1;
     const pageSize = 20;
+    const staleAfterHours = 72;
+    const taipeiTimeZone = 'Asia/Taipei';
     let myChart = null;
-    let selectedCutoffDate = null;
+
+    const taipeiFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: taipeiTimeZone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hourCycle: 'h23'
+    });
+
+    function parseDataTime(value) {
+        if (typeof value !== 'string') return null;
+
+        // 舊資料沒有時區；明確視為臺北時間，避免 Safari 或不同地區瀏覽器解析不一致。
+        const legacy = value.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+        const parsed = legacy
+            ? new Date(`${legacy[1]}-${legacy[2].padStart(2, '0')}-${legacy[3].padStart(2, '0')}T${legacy[4].padStart(2, '0')}:${legacy[5]}:00+08:00`)
+            : new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function getTaipeiParts(date) {
+        return Object.fromEntries(
+            taipeiFormatter.formatToParts(date)
+                .filter(part => part.type !== 'literal')
+                .map(part => [part.type, part.value])
+        );
+    }
+
+    function formatWesternDate(date) {
+        const parts = getTaipeiParts(date);
+        return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+    }
+
+    function formatMinguoDate(date) {
+        const parts = getTaipeiParts(date);
+        return `${Number(parts.year) - 1911}/${parts.month}/${parts.day}`;
+    }
+
+    function subtractTaipeiMonths(date, months) {
+        const parts = getTaipeiParts(date);
+        const sourceYear = Number(parts.year);
+        const sourceMonth = Number(parts.month);
+        const sourceDay = Number(parts.day);
+        const zeroBasedTarget = sourceYear * 12 + (sourceMonth - 1) - months;
+        const targetYear = Math.floor(zeroBasedTarget / 12);
+        const targetMonth = ((zeroBasedTarget % 12) + 12) % 12 + 1;
+        const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+        const targetDay = Math.min(sourceDay, lastDay);
+        const offset = date.getMilliseconds() ? `.${String(date.getMilliseconds()).padStart(3, '0')}` : '';
+        return new Date(
+            `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}` +
+            `T${parts.hour}:${parts.minute}:${parts.second}${offset}+08:00`
+        );
+    }
+
+    function calculateCutoff(range, now = new Date()) {
+        if (range === '近1週') return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        if (range === '近1月') return subtractTaipeiMonths(now, 1);
+        if (range === '近1年') return subtractTaipeiMonths(now, 12);
+        if (range === '今年') {
+            const currentYear = getTaipeiParts(now).year;
+            return new Date(`${currentYear}-01-01T00:00:00+08:00`);
+        }
+        return new Date(0);
+    }
+
+    function getFreshnessState(lastUpdated, now = new Date()) {
+        const ageHours = Math.max(0, (now.getTime() - lastUpdated.getTime()) / (60 * 60 * 1000));
+        if (ageHours > staleAfterHours) {
+            return {
+                className: 'freshness-status stale',
+                text: `⚠ 資料已 ${Math.floor(ageHours)} 小時未更新，請以臺灣銀行最新牌價為準`
+            };
+        }
+        return {
+            className: 'freshness-status fresh',
+            text: `資料更新正常（距今約 ${Math.floor(ageHours)} 小時）`
+        };
+    }
 
     async function init() {
         try {
-            const response = await fetch('data.json?t=' + new Date().getTime());
-            rawData = await response.json();
-            if (!rawData || rawData.length === 0) throw new Error("無數據");
+            const response = await fetch('data.json?t=' + Date.now());
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            if (!Array.isArray(payload) || payload.length === 0) throw new Error('無數據');
+
+            rawData = payload
+                .map(item => ({
+                    ...item,
+                    buy: Number(item.buy),
+                    sell: Number(item.sell),
+                    parsedTime: parseDataTime(item.time)
+                }))
+                .filter(item => item.parsedTime && Number.isFinite(item.buy) && Number.isFinite(item.sell))
+                .sort((a, b) => a.parsedTime - b.parsedTime);
+            if (rawData.length === 0) throw new Error('沒有可解析的數據');
+
             updateTopDisplay();
             applyFilter('近1年');
-        } catch (e) {
-            document.getElementById('latestPrice').innerText = "數據載入失敗";
+        } catch (error) {
+            console.error('資料載入失敗', error);
+            document.getElementById('latestPrice').innerText = '數據載入失敗';
+            const status = document.getElementById('freshnessStatus');
+            status.className = 'freshness-status error';
+            status.innerText = '無法確認資料更新狀態';
         }
     }
 
     function setRange(range, btn) {
-        document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.range-btn').forEach(button => button.classList.remove('active'));
         btn.classList.add('active');
-        currentPage = 1;
         applyFilter(range);
     }
 
     function applyFilter(range) {
-        const lastDataPoint = new Date(rawData[rawData.length - 1].time);
-        let cutoff = new Date(lastDataPoint);
-
-        if (range === '近1週') cutoff.setDate(lastDataPoint.getDate() - 7);
-        else if (range === '近1月') cutoff.setMonth(lastDataPoint.getMonth() - 1);
-        else if (range === '近1年') cutoff.setFullYear(lastDataPoint.getFullYear() - 1);
-        else if (range === '今年') cutoff = new Date(lastDataPoint.getFullYear(), 0, 1);
-        else cutoff = new Date(0);
-
-        selectedCutoffDate = cutoff;
-        filteredData = rawData.filter(d => new Date(d.time) >= cutoff).reverse();
-        
+        const cutoff = calculateCutoff(range, new Date());
+        currentPage = 1;
+        filteredData = rawData.filter(item => item.parsedTime >= cutoff).slice().reverse();
         renderTable();
         renderChart();
     }
@@ -158,31 +249,34 @@
         const pageItems = filteredData.slice(start, start + pageSize);
         const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
 
+        if (pageItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="color:#888;">選定期間內沒有資料</td></tr>';
+        }
+
         pageItems.forEach(item => {
-            const dateParts = item.time.split(' ')[0].split('/');
-            const minguoYear = parseInt(dateParts[0]) - 1911;
             const row = `<tr>
-                <td><span class="minguo-date">${minguoYear}/${dateParts[1]}/${dateParts[2]}</span><span class="western-date">${item.time}</span></td>
-                <td style="font-weight:bold; color:var(--dark-gold);">${item.sell}</td>
-                <td>${item.buy}</td>
+                <td><span class="minguo-date">${formatMinguoDate(item.parsedTime)}</span><span class="western-date">${formatWesternDate(item.parsedTime)}</span></td>
+                <td style="font-weight:bold; color:var(--dark-gold);">${item.sell.toLocaleString('zh-TW')}</td>
+                <td>${item.buy.toLocaleString('zh-TW')}</td>
                 <td style="color:#888;">${(item.sell - item.buy).toFixed(1)}</td>
             </tr>`;
             tbody.insertAdjacentHTML('beforeend', row);
         });
 
         document.getElementById('pageInfo').innerText = `第 ${currentPage} / ${totalPages} 頁`;
-        document.getElementById('prevBtn').disabled = currentPage === 1;
-        document.getElementById('nextBtn').disabled = currentPage === totalPages;
+        document.getElementById('prevBtn').disabled = currentPage <= 1;
+        document.getElementById('nextBtn').disabled = currentPage >= totalPages;
     }
 
     function changePage(step) {
-        currentPage += step;
+        const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
+        currentPage = Math.min(totalPages, Math.max(1, currentPage + step));
         renderTable();
         window.scrollTo({ top: document.querySelector('.controls').offsetTop - 20, behavior: 'smooth' });
     }
 
     function goToPage(target) {
-        const totalPages = Math.ceil(filteredData.length / pageSize);
+        const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
         currentPage = target === 'first' ? 1 : totalPages;
         renderTable();
         window.scrollTo({ top: document.querySelector('.controls').offsetTop - 20, behavior: 'smooth' });
@@ -192,33 +286,23 @@
         const ctx = document.getElementById('goldChart').getContext('2d');
         if (myChart) myChart.destroy();
 
-        const labels = rawData.map(d => d.time);
-        const sellPrices = rawData.map(d => d.sell);
-        const buyPrices = rawData.map(d => d.buy);
-
-        // 找出對應選定範圍的起始索引
-        const startIndex = rawData.findIndex(d => new Date(d.time) >= selectedCutoffDate);
+        const chartData = filteredData.slice().reverse();
+        const labels = chartData.map(item => formatWesternDate(item.parsedTime));
 
         myChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
+                labels,
                 datasets: [
-                    { label: '賣出價', data: sellPrices, borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.05)', fill: true, tension: 0.1, pointRadius: 2 },
-                    { label: '買進價', data: buyPrices, borderColor: '#7f8c8d', borderDash: [5, 5], tension: 0.1, pointRadius: 0 }
+                    { label: '賣出價', data: chartData.map(item => item.sell), borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.05)', fill: true, tension: 0.1, pointRadius: 2 },
+                    { label: '買進價', data: chartData.map(item => item.buy), borderColor: '#7f8c8d', borderDash: [5, 5], tension: 0.1, pointRadius: 0 }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
-                scales: {
-                    x: {
-                        // 動態設定圖表顯示的範圍
-                        min: labels[startIndex > -1 ? startIndex : 0],
-                        max: labels[labels.length - 1]
-                    }
-                },
+                scales: { x: { ticks: { maxTicksLimit: 8 } } },
                 plugins: {
                     zoom: {
                         pan: { enabled: true, mode: 'x' },
@@ -231,16 +315,26 @@
 
     function updateTopDisplay() {
         const last = rawData[rawData.length - 1];
-        const prev = rawData.length > 1 ? rawData[rawData.length - 2] : last;
-        const diff = (last.sell - prev.sell).toFixed(1);
-        const percent = ((diff / prev.sell) * 100).toFixed(2);
-        let trend = diff > 0 ? `<span class="up">▲ ${diff} (+${percent}%)</span>` : (diff < 0 ? `<span class="down">▼ ${Math.abs(diff)} (${percent}%)</span>` : `<span style="color:#999">持平</span>`);
+        const previous = rawData.length > 1 ? rawData[rawData.length - 2] : last;
+        const difference = last.sell - previous.sell;
+        const percent = previous.sell ? (difference / previous.sell * 100).toFixed(2) : '0.00';
+        const formattedDifference = Math.abs(difference).toFixed(1);
+        const trend = difference > 0
+            ? `<span class="up">▲ ${formattedDifference} (+${percent}%)</span>`
+            : difference < 0
+                ? `<span class="down">▼ ${formattedDifference} (${percent}%)</span>`
+                : '<span style="color:#999">持平</span>';
 
         document.getElementById('latestPrice').innerHTML = `
-            <div class="sub-info">最後更新：${last.time}</div>
-            <div class="main-price">${last.sell} <small style="font-size:16px; color:#666; font-weight:normal;">TWD/g</small></div>
+            <div class="sub-info">最後更新：${formatWesternDate(last.parsedTime)}（臺北時間）</div>
+            <div class="main-price">${last.sell.toLocaleString('zh-TW')} <small style="font-size:16px; color:#666; font-weight:normal;">TWD/g</small></div>
             <div style="font-size:16px;">${trend}</div>
         `;
+
+        const freshness = getFreshnessState(last.parsedTime);
+        const status = document.getElementById('freshnessStatus');
+        status.className = freshness.className;
+        status.innerText = freshness.text;
     }
 
     init();
